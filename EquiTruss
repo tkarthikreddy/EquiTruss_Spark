@@ -109,21 +109,21 @@ def CreateIndex(args : Array[String], sc : SparkContext){
     val filteredEdge=minGraph.vertices.filter(v=>{v._2._2==ktmax})
     val filteredEdgesCount=filteredEdge.count()
     val filteredVertexCount=filteredEdge.flatMap(v=>{List(v._2._1.u,v._2._1.v)}).distinct.count()
-    val indexGraph = minGraph.pregel(initialMsg,5,EdgeDirection.Both)(UpdateForSuperNodes,sendMsgTrussForSuperNodes,mergeMsgTrussForSuperNodes)
+    val GraphwithSuperNodes = minGraph.pregel(initialMsg,5,EdgeDirection.Both)(UpdateForSuperNodes,sendMsgTrussForSuperNodes,mergeMsgTrussForSuperNodes)
     minGraph.edges.map(e=>{e.srcId+"\t"+e.dstId}).repartition(1).saveAsTextFile(args(2)+"/edgeList")
     minGraph.vertices.map(v=>{v._2._1.u+"\t"+v._2._1.v+"\t"+v._2._2}).repartition(1).saveAsTextFile(args(2)+"/edgeList_raw")
     minGraph.vertices.map(v=>{v._1+"\t"+v._2._2}).repartition(1).saveAsTextFile(args(2)+"/mapping")
 
 
 
-    val supGraph = indexGraph.pregel(initialMsg,1,EdgeDirection.Both)(UpdateForSuperEdges,sendMsgTrussForSuperEdges,mergeMsgTrussForSuperEdges)
+    val GraphwithSuperEdges = GraphwithSuperNodes.pregel(initialMsg,1,EdgeDirection.Both)(UpdateForSuperEdges,sendMsgTrussForSuperEdges,mergeMsgTrussForSuperEdges)
 
 
 
     val sedg = new mutable.HashSet[Edge[String]]()
 
 
-    supGraph.vertices.map(l =>{ l._2._7}).repartition(1).distinct().collect().foreach(k=>{if(k.split("->").size==2) {
+    GraphwithSuperEdges.vertices.map(l =>{ l._2._7}).repartition(1).distinct().collect().foreach(k=>{if(k.split("->").size==2) {
       val src = k.split("->")(0); val iter = k.split("->")(1).split("\\|").iterator;  while (iter.hasNext) {val dest = iter.next().toString;
         //if (dest != "" && !(superEdges.contains(Edge(src + "," + dest)) || superEdges.contains(dest + "," + src))) {
         if (dest != "" ) {
@@ -134,7 +134,7 @@ def CreateIndex(args : Array[String], sc : SparkContext){
             sedg += Edge(s.toLong ,  d.toLong, "super edge")}}}})
 
 
-     val superNodesWithVertices=  supGraph.vertices.map(k=>{(k._1,((k._2._1.u)),((k._2._1.v)),((k._2._2)),((k._2._6)))})
+     val superNodesWithVertices=  GraphwithSuperEdges.vertices.map(k=>{(k._1,((k._2._1.u)),((k._2._1.v)),((k._2._2)),((k._2._6)))})
   val kkk = superNodesWithVertices.map(k=>(k._5,k._2+"|"+k._3+"|"))
   val sss = kkk.reduceByKey((a,b)=>a+b)
   val qqq = sss.map(k=>{(k._1,k._2.toString.split("\\|").distinct)})
