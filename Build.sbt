@@ -1,4 +1,4 @@
-name := "wordcount"
+name := "EquiTruss"
 
 version := "0.1"
 
