@@ -153,7 +153,7 @@ def CreateIndex(args : Array[String], sc : SparkContext){
 
 
 
-    val superNodes :VertexRDD[Int]= VertexRDD( indexGraph.vertices.map(l =>{(l._2._6._1 , l._2._6._2)}).repartition(1))
+    val superNodes :VertexRDD[Int]= VertexRDD( GraphwithSuperNodes.vertices.map(l =>{(l._2._6._1 , l._2._6._2)}).repartition(1))
     //    val superNodes :VertexRDD[(Int,Double,String)]= VertexRDD( indexGraph.vertices.map(l =>{(l._2._6._1 , (l._2._6._2,Double.PositiveInfinity,""))}).repartition(1))
     val edgerdddd = sedg.toArray
     val superEdges : RDD[Edge[String]] = sc.parallelize(edgerdddd)
