@@ -24,7 +24,7 @@ import org.apache.spark.sql.types._
 
 
 
-object EquiTruss {
+object EquiTruss_index {
   val initialMsg="-10"
 
   type VertexSet = OpenHashSet[VertexId]
