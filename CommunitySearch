@@ -1,3 +1,7 @@
+
+//   1 1 output_search output_test/superEdges/part-00000 3 output_test/VerticesWithNodes/part-00000 output_test/superNodesWithVertices/part-00000 output_test/superNodes/part-00000
+
+
 import scala.io.Source
 import breeze.linalg.min
 import org.apache.spark.graphx._
@@ -61,20 +65,20 @@ object equitruss {
     val direction: EdgeDirection = EdgeDirection.Either  // In and Out
     val verticesWithNodes = sc.textFile( args(5)).map(x=>{((x.split(", ")(0).stripPrefix("(")),(x.split(", ")(1)).stripSuffix(")"))}).toDF("vertex","supernodes")
     var participatingSuperNodes = ArrayBuffer[String]()
-    val rr =(verticesWithNodes.select("supernodes") where (($"vertex" === args(8)))).collect()
-     rr.head.toString().stripSuffix("]").stripPrefix("[").split(" ").foreach(k=>{
+    val queryOutput =(verticesWithNodes.select("supernodes") where (($"vertex" === args(8)))).collect()
+    queryOutput.head.toString().stripSuffix("]").stripPrefix("[").split(" ").foreach(k=>{
       val w=k.trim.stripPrefix("(").stripSuffix(")").trim; if(  w.split(",").size==2   )
       {if(w.split(",")(1).toInt>=Kmin)
       {participatingSuperNodes +=k}}})
 
-     val startTimeMillis = System.currentTimeMillis()
-     val graph= GraphLoader.edgeListFile(sc,args(3), true,partitions,StorageLevel.MEMORY_AND_DISK,StorageLevel.MEMORY_AND_DISK).partitionBy(PartitionStrategy.RandomVertexCut).removeSelfEdges().groupEdges((e1, e2) => e1)
-   val lines = sc.textFile(args(7))
-    val ff : RDD[(VertexId,(Int ))]  = lines.map(k=>{ (k.split(" ")(0).toInt, (k.split(" ")(1).toInt   )) })
-    val kk = VertexRDD(ff)
-val modifiedGraph=  graph.outerJoinVertices(kk){
-  (vid, _, optSet) => optSet.getOrElse(null)
-}
+    val startTimeMillis = System.currentTimeMillis()
+    val graph= GraphLoader.edgeListFile(sc,args(3), true,partitions,StorageLevel.MEMORY_AND_DISK,StorageLevel.MEMORY_AND_DISK).partitionBy(PartitionStrategy.RandomVertexCut).removeSelfEdges().groupEdges((e1, e2) => e1)
+    val lines = sc.textFile(args(7))
+    val superNodes : RDD[(VertexId,(Int ))]  = lines.map(k=>{ (k.split(" ")(0).toInt, (k.split(" ")(1).toInt   )) })
+    val superNodesFiltered = VertexRDD(superNodes)
+    val modifiedGraph=  graph.outerJoinVertices(superNodesFiltered){
+      (vid, _, optSet) => optSet.getOrElse(null)
+    }
 
     val mEdges=modifiedGraph.edges  //edge triplets containing the srcAttr, dstAttr and common neighbors
     val edgeCount=mEdges.count()    //number of edges
@@ -84,7 +88,7 @@ val modifiedGraph=  graph.outerJoinVertices(kk){
         (ver._1,((ver._2.toString.toInt),(Kmin),(Double.PositiveInfinity),(0.0),(participatingSuperNodes)))}
 
       else{
-      (ver._1,((ver._2.toString.toInt),(Kmin),(0.0),(0.0),(participatingSuperNodes)))}
+        (ver._1,((ver._2.toString.toInt),(Kmin),(0.0),(0.0),(participatingSuperNodes)))}
     })
 
 
@@ -96,26 +100,35 @@ val modifiedGraph=  graph.outerJoinVertices(kk){
     val endTimeMillis = System.currentTimeMillis()
     println("Execution time "+(endTimeMillis-startTimeMillis)/1000)
     val communities = bfsGraph.vertices.map(l=>{l._2._5}).distinct()
+    communities.map(k=>{k}).repartition(partitions).saveAsTextFile(args(2)+"/searchResult")
 
   }
 
-def sendMsgForSearch(triplet: EdgeTriplet[( Int , Int, Double ,Double,ArrayBuffer[String]),Int]): Iterator[(VertexId, String)] = {
+  /*
+currentTruss
+minTruss
+ToVisit double.PositiveInfinity for toVisit, 0.0 otherwise
+Visited double.PositiveInfinity for visited, 0.0 otherwise
+RelevantSuperNodes
+*/
+
+  def sendMsgForSearch(triplet: EdgeTriplet[( Int , Int, Double ,Double,ArrayBuffer[String]),Int]): Iterator[(VertexId, String)] = {
 
     val aa = triplet.srcAttr
     val bb = triplet.dstAttr
 
-      if(bb._1 >= bb._2 && aa._4==0.0 && aa._3==Double.PositiveInfinity) {
-        return Iterator((triplet.dstId,"toVisit"),((triplet.srcId,"Visited")))
+    if(bb._1 >= bb._2 && aa._4==0.0 && aa._3==Double.PositiveInfinity) {
+      return Iterator((triplet.dstId,"toVisit"),((triplet.srcId,"Visited")))
+    }
+    else {
+
+      if (aa._4==0.0) {
+        return Iterator(((triplet.srcId, "Visited")))
       }
       else {
-
-        if (aa._4==0.0) {
-          return Iterator(((triplet.srcId, "Visited")))
-          }
-        else {
-            return Iterator.empty
-          }
+        return Iterator.empty
       }
+    }
   }
 
 
@@ -126,25 +139,24 @@ def sendMsgForSearch(triplet: EdgeTriplet[( Int , Int, Double ,Double,ArrayBuffe
 
       return ( value._1,value._2,value._3,value._4,value._5)
     }else
-      {
+    {
       val msg= message.split(":")                                                 // split message by ":"
-        if(msg.contains("Visited")){
-          if(value._1>=value._2){
+      if(msg.contains("Visited")){
+        if(value._1>=value._2){
           return ( value._1,value._2,value._3,Double.PositiveInfinity,value._5)
+        }
+      }
+      else{
+        if(msg.contains("toVisit")){
+          if(value._3 == 0.0){
+            value._5+="("+vertexID.toString+","+value._1.toString+")"
+            return ( value._1,value._2,Double.PositiveInfinity,value._4,value._5)
           }
         }
-        else{
-          if(msg.contains("toVisit")){
-            if(value._3 == 0.0){
-              value._5+="("+vertexID.toString+","+value._1.toString+")"
-              return ( value._1,value._2,Double.PositiveInfinity,value._4,value._5)
-            }
-          }
-        }
+      }
     }
     return ( value._1,value._2,value._3,value._4,value._5)
   }
 }
-
 
 
