@@ -26,12 +26,11 @@ import org.apache.spark.sql._
 import org.graphframes.GraphFrame
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.types._
-import wordscount.{Vert, VertexSet, getCoUn}
+import Equitruss_Scala.{Vert, VertexSet, getCoUn}
 
 
+object CommunitySearch {
 
-
-object equitruss {
   val initialMsg="-10"
 
   type VertexTruss = Int
@@ -117,7 +116,7 @@ RelevantSuperNodes
     val aa = triplet.srcAttr
     val bb = triplet.dstAttr
 
-    if(bb._1 >= bb._2 && aa._4==0.0 && aa._3==Double.PositiveInfinity) {
+    if(bb._1 >= bb._2 && aa._4==0.0 && aa._3==Double.PositiveInfinity) {     // Current trussness > min trussmess(kmin) 
       return Iterator((triplet.dstId,"toVisit"),((triplet.srcId,"Visited")))
     }
     else {
@@ -147,7 +146,7 @@ RelevantSuperNodes
         }
       }
       else{
-        if(msg.contains("toVisit")){
+        if(msg.contains("toVisit")){   //Visits the Supernode and sends messages to its neighbors
           if(value._3 == 0.0){
             value._5+="("+vertexID.toString+","+value._1.toString+")"
             return ( value._1,value._2,Double.PositiveInfinity,value._4,value._5)
